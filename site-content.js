@@ -1,0 +1,5 @@
+async function loadDealData(){const r=await fetch('data.json?ts='+Date.now());if(!r.ok)throw new Error('Ne mogu da učitam sadržaj.');return r.json()}
+function esc(s=''){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+function refCard(x){return `<a class="reference-card" href="reference.html?id=${encodeURIComponent(x.id)}"><img src="${esc(x.cover||x.images?.[0]||'')}" alt="${esc(x.title)}"><div><h3>${esc(x.title)}</h3>${x.short?`<p>${esc(x.short)}</p>`:''}<span>Pogledajte projekat →</span></div></a>`}
+async function renderHomeReferences(){const el=document.getElementById('reference-list');if(!el)return;try{const d=await loadDealData(),items=(d.references||[]).filter(x=>x.published!==false);el.innerHTML=items.length?items.slice().reverse().map(refCard).join(''):'<div class="reference-empty"><strong>Reference uskoro.</strong><p>Ovde će biti objavljeni izvedeni projekti DEAL NS.</p></div>'}catch(e){console.error(e)}}
+renderHomeReferences();
