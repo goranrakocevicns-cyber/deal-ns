@@ -1,0 +1,1 @@
+const header=document.querySelector('.top');document.querySelector('.menu').addEventListener('click',()=>header.classList.toggle('open'));document.querySelectorAll('nav a').forEach(a=>a.addEventListener('click',()=>header.classList.remove('open')));
