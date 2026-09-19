@@ -1,0 +1,158 @@
+name: Backup DEAL NS content
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '17 2 * * *'
+
+permissions:
+  contents: write
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Preuzmi repozitorijum
+        uses: actions/checkout@v4
+
+      - name: Napravi nezavisnu kopiju
+        run: |
+          python3 - <<'PY'
+          import json
+          import pathlib
+          import urllib.request
+          import urllib.parse
+          import datetime
+
+          BASE = 'https://qfkfglciujegnyflebjh.supabase.co'
+          KEY = 'sb_publishable_2ujRYSmQf43wt10vQikHKQ_9wQj79sN'
+          BUCKET = 'deal-ns-images'
+
+          root = pathlib.Path('backup-images')
+          root.mkdir(exist_ok=True)
+
+          def api(path):
+              req = urllib.request.Request(
+                  BASE + path,
+                  headers={
+                      'apikey': KEY,
+                      'Authorization': 'Bearer ' + KEY
+                  }
+              )
+              with urllib.request.urlopen(req, timeout=30) as r:
+                  return json.load(r)
+
+          refs = api(
+              '/rest/v1/references?select=*&published=eq.true&order=created_at.asc'
+          )
+          photos = api(
+              '/rest/v1/photos?select=*&order=created_at.asc'
+          )
+
+          used = set()
+          local = {}
+
+          for p in photos:
+              sp = p.get('storage_path')
+              if not sp:
+                  continue
+
+              dest = root / sp.replace('/', '__')
+
+              url = (
+                  BASE +
+                  '/storage/v1/object/public/' +
+                  BUCKET + '/' +
+                  urllib.parse.quote(sp, safe='/')
+              )
+
+              try:
+                  urllib.request.urlretrieve(url, dest)
+                  used.add(dest.as_posix())
+                  local[sp] = dest.as_posix()
+              except Exception as e:
+                  print('Preskacem:', sp, e)
+
+          byref = {}
+          gallery = []
+
+          for p in photos:
+              src = local.get(p.get('storage_path'))
+
+              if not src:
+                  continue
+
+              gallery.append({
+                  'src': src,
+                  'reference_id': p.get('reference_id')
+              })
+
+              if p.get('reference_id') is not None:
+                  byref.setdefault(
+                      p['reference_id'], []
+                  ).append((
+                      p.get('sort_order') or 0,
+                      src
+                  ))
+
+          out = []
+
+          for r in refs:
+              imgs = [
+                  v for _, v in
+                  sorted(byref.get(r['id'], []))
+              ]
+
+              cover = (
+                  local.get(r.get('cover_path')) or
+                  (imgs[0] if imgs else '')
+              )
+
+              out.append({
+                  **r,
+                  'short': r.get('short_description') or '',
+                  'cover': cover,
+                  'images': imgs
+              })
+
+          payload = {
+              'generated_at':
+                  datetime.datetime.now(
+                      datetime.timezone.utc
+                  ).isoformat(),
+              'references': out,
+              'gallery': gallery
+          }
+
+          pathlib.Path('fallback-data.js').write_text(
+              'window.DEAL_FALLBACK=' +
+              json.dumps(
+                  payload,
+                  ensure_ascii=False,
+                  separators=(',', ':')
+              ) +
+              ';\n',
+              encoding='utf-8'
+          )
+
+          for f in root.iterdir():
+              if f.is_file() and f.as_posix() not in used:
+                  f.unlink()
+
+          PY
+
+      - name: Sacuvaj novu kopiju
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add fallback-data.js backup-images/
+
+          if git diff --cached --quiet; then
+            echo "Nema promena."
+            exit 0
+          fi
+
+          git commit -m "Update DEAL NS independent backup"
+          git push
