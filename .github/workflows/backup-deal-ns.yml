@@ -35,10 +35,7 @@ jobs:
           def api(path):
               req = urllib.request.Request(
                   BASE + path,
-                  headers={
-                      'apikey': KEY,
-                      'Authorization': 'Bearer ' + KEY
-                  }
+                  headers={'apikey': KEY}
               )
               with urllib.request.urlopen(req, timeout=30) as r:
                   return json.load(r)
