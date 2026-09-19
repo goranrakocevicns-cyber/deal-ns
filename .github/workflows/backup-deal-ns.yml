@@ -26,7 +26,7 @@ jobs:
           import datetime
 
           BASE = 'https://qfkfglciujegnyflebjh.supabase.co'
-          KEY = 'sb_publishable_2ujRYSmQf43wt10vQikHKQ_9wQj79sN'
+          KEY = '${{ secrets.SUPABASE_SECRET_KEY }}'
           BUCKET = 'deal-ns-images'
 
           root = pathlib.Path('backup-images')
