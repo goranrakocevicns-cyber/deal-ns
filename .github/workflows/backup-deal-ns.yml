@@ -24,6 +24,7 @@ jobs:
           import urllib.request
           import urllib.parse
           import datetime
+          import time
 
           BASE = 'https://qfkfglciujegnyflebjh.supabase.co'
           KEY = '${{ secrets.SUPABASE_SECRET_KEY }}'
@@ -32,13 +33,29 @@ jobs:
           root = pathlib.Path('backup-images')
           root.mkdir(exist_ok=True)
 
+          def with_retry(operation, label, attempts=5):
+              last_error = None
+              for attempt in range(1, attempts + 1):
+                  try:
+                      return operation()
+                  except Exception as e:
+                      last_error = e
+                      if attempt == attempts:
+                          break
+                      wait = min(10 * attempt, 40)
+                      print(f'{label}: pokusaj {attempt}/{attempts} nije uspeo: {e}; ponavljam za {wait}s')
+                      time.sleep(wait)
+              raise last_error
+
           def api(path):
-              req = urllib.request.Request(
-                  BASE + path,
-                  headers={'apikey': KEY}
-              )
-              with urllib.request.urlopen(req, timeout=30) as r:
-                  return json.load(r)
+              def request():
+                  req = urllib.request.Request(
+                      BASE + path,
+                      headers={'apikey': KEY}
+                  )
+                  with urllib.request.urlopen(req, timeout=45) as r:
+                      return json.load(r)
+              return with_retry(request, 'Supabase API')
 
           refs = api(
               '/rest/v1/references?select=*&published=eq.true&order=created_at.asc'
@@ -65,11 +82,15 @@ jobs:
               )
 
               try:
-                  urllib.request.urlretrieve(url, dest)
+                  with_retry(
+                      lambda: urllib.request.urlretrieve(url, dest),
+                      f'Fotografija {sp}',
+                      attempts=4
+                  )
                   used.add(dest.as_posix())
                   local[sp] = dest.as_posix()
               except Exception as e:
-                  print('Preskacem:', sp, e)
+                  print('Preskacem posle ponovljenih pokusaja:', sp, e)
 
           byref = {}
           gallery = []
